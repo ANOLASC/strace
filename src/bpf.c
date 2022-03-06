@@ -162,6 +162,485 @@ print_ebpf_prog(struct tcb *const tcp, const uint64_t addr, const uint32_t len)
 	}
 }
 
+struct bpf_map_info {
+	__u32 type;
+	__u32 id;
+	__u32 key_size;
+	__u32 value_size;
+	__u32 max_entries;
+	__u32 map_flags;
+	char  name[BPF_OBJ_NAME_LEN];
+	__u32 ifindex;
+	__u32 btf_vmlinux_value_type_id;
+	__u64 netns_dev;
+	__u64 netns_ino;
+	__u32 btf_id;
+	__u32 btf_key_type_id;
+	__u32 btf_value_type_id;
+	__u32 :32;	/* alignment pad */
+	__u64 map_extra;
+} __attribute__((aligned(8)));
+
+union bpf_attr {
+	struct { /* anonymous struct used by BPF_MAP_CREATE command */
+		__u32	map_type;	/* one of enum bpf_map_type */
+		__u32	key_size;	/* size of key in bytes */
+		__u32	value_size;	/* size of value in bytes */
+		__u32	max_entries;	/* max number of entries in a map */
+		__u32	map_flags;	/* BPF_MAP_CREATE related
+					 * flags defined above.
+					 */
+		__u32	inner_map_fd;	/* fd pointing to the inner map */
+		__u32	numa_node;	/* numa node (effective only if
+					 * BPF_F_NUMA_NODE is set).
+					 */
+		char	map_name[BPF_OBJ_NAME_LEN];
+		__u32	map_ifindex;	/* ifindex of netdev to create on */
+		__u32	btf_fd;		/* fd pointing to a BTF type data */
+		__u32	btf_key_type_id;	/* BTF type_id of the key */
+		__u32	btf_value_type_id;	/* BTF type_id of the value */
+		__u32	btf_vmlinux_value_type_id;/* BTF type_id of a kernel-
+						   * struct stored as the
+						   * map value
+						   */
+		/* Any per-map-type extra fields
+		 *
+		 * BPF_MAP_TYPE_BLOOM_FILTER - the lowest 4 bits indicate the
+		 * number of hash functions (if 0, the bloom filter will default
+		 * to using 5 hash functions).
+		 */
+		__u64	map_extra;
+	};
+
+	struct { /* anonymous struct used by BPF_MAP_*_ELEM commands */
+		__u32		map_fd;
+		__aligned_u64	key;
+		union {
+			__aligned_u64 value;
+			__aligned_u64 next_key;
+		};
+		__u64		flags;
+	};
+
+	struct { /* struct used by BPF_MAP_*_BATCH commands */
+		__aligned_u64	in_batch;	/* start batch,
+						 * NULL to start from beginning
+						 */
+		__aligned_u64	out_batch;	/* output: next start batch */
+		__aligned_u64	keys;
+		__aligned_u64	values;
+		__u32		count;		/* input/output:
+						 * input: # of key/value
+						 * elements
+						 * output: # of filled elements
+						 */
+		__u32		map_fd;
+		__u64		elem_flags;
+		__u64		flags;
+	} batch;
+
+	struct { /* anonymous struct used by BPF_PROG_LOAD command */
+		__u32		prog_type;	/* one of enum bpf_prog_type */
+		__u32		insn_cnt;
+		__aligned_u64	insns;
+		__aligned_u64	license;
+		__u32		log_level;	/* verbosity level of verifier */
+		__u32		log_size;	/* size of user buffer */
+		__aligned_u64	log_buf;	/* user supplied buffer */
+		__u32		kern_version;	/* not used */
+		__u32		prog_flags;
+		char		prog_name[BPF_OBJ_NAME_LEN];
+		__u32		prog_ifindex;	/* ifindex of netdev to prep for */
+		/* For some prog types expected attach type must be known at
+		 * load time to verify attach type specific parts of prog
+		 * (context accesses, allowed helpers, etc).
+		 */
+		__u32		expected_attach_type;
+		__u32		prog_btf_fd;	/* fd pointing to BTF type data */
+		__u32		func_info_rec_size;	/* userspace bpf_func_info size */
+		__aligned_u64	func_info;	/* func info */
+		__u32		func_info_cnt;	/* number of bpf_func_info records */
+		__u32		line_info_rec_size;	/* userspace bpf_line_info size */
+		__aligned_u64	line_info;	/* line info */
+		__u32		line_info_cnt;	/* number of bpf_line_info records */
+		__u32		attach_btf_id;	/* in-kernel BTF type id to attach to */
+		union {
+			/* valid prog_fd to attach to bpf prog */
+			__u32		attach_prog_fd;
+			/* or valid module BTF object fd or 0 to attach to vmlinux */
+			__u32		attach_btf_obj_fd;
+		};
+		__u32		core_relo_cnt;	/* number of bpf_core_relo */
+		__aligned_u64	fd_array;	/* array of FDs */
+		__aligned_u64	core_relos;
+		__u32		core_relo_rec_size; /* sizeof(struct bpf_core_relo) */
+	};
+
+	struct { /* anonymous struct used by BPF_OBJ_* commands */
+		__aligned_u64	pathname;
+		__u32		bpf_fd;
+		__u32		file_flags;
+	};
+
+	struct { /* anonymous struct used by BPF_PROG_ATTACH/DETACH commands */
+		__u32		target_fd;	/* container object to attach to */
+		__u32		attach_bpf_fd;	/* eBPF program to attach */
+		__u32		attach_type;
+		__u32		attach_flags;
+		__u32		replace_bpf_fd;	/* previously attached eBPF
+						 * program to replace if
+						 * BPF_F_REPLACE is used
+						 */
+	};
+
+	struct { /* anonymous struct used by BPF_PROG_TEST_RUN command */
+		__u32		prog_fd;
+		__u32		retval;
+		__u32		data_size_in;	/* input: len of data_in */
+		__u32		data_size_out;	/* input/output: len of data_out
+						 *   returns ENOSPC if data_out
+						 *   is too small.
+						 */
+		__aligned_u64	data_in;
+		__aligned_u64	data_out;
+		__u32		repeat;
+		__u32		duration;
+		__u32		ctx_size_in;	/* input: len of ctx_in */
+		__u32		ctx_size_out;	/* input/output: len of ctx_out
+						 *   returns ENOSPC if ctx_out
+						 *   is too small.
+						 */
+		__aligned_u64	ctx_in;
+		__aligned_u64	ctx_out;
+		__u32		flags;
+		__u32		cpu;
+		__u32		batch_size;
+	} test;
+
+	struct { /* anonymous struct used by BPF_*_GET_*_ID */
+		union {
+			__u32		start_id;
+			__u32		prog_id;
+			__u32		map_id;
+			__u32		btf_id;
+			__u32		link_id;
+		};
+		__u32		next_id;
+		__u32		open_flags;
+	};
+
+	struct { /* anonymous struct used by BPF_OBJ_GET_INFO_BY_FD */
+		__u32		bpf_fd;
+		__u32		info_len;
+		__aligned_u64	info;
+	} info;
+
+	struct { /* anonymous struct used by BPF_PROG_QUERY command */
+		__u32		target_fd;	/* container object to query */
+		__u32		attach_type;
+		__u32		query_flags;
+		__u32		attach_flags;
+		__aligned_u64	prog_ids;
+		__u32		prog_cnt;
+		__aligned_u64	prog_attach_flags; /* output: per-program attach_flags */
+	} query;
+
+	struct { /* anonymous struct used by BPF_RAW_TRACEPOINT_OPEN command */
+		__u64 name;
+		__u32 prog_fd;
+	} raw_tracepoint;
+
+	struct { /* anonymous struct for BPF_BTF_LOAD */
+		__aligned_u64	btf;
+		__aligned_u64	btf_log_buf;
+		__u32		btf_size;
+		__u32		btf_log_size;
+		__u32		btf_log_level;
+	};
+
+	struct {
+		__u32		pid;		/* input: pid */
+		__u32		fd;		/* input: fd */
+		__u32		flags;		/* input: flags */
+		__u32		buf_len;	/* input/output: buf len */
+		__aligned_u64	buf;		/* input/output:
+						 *   tp_name for tracepoint
+						 *   symbol for kprobe
+						 *   filename for uprobe
+						 */
+		__u32		prog_id;	/* output: prod_id */
+		__u32		fd_type;	/* output: BPF_FD_TYPE_* */
+		__u64		probe_offset;	/* output: probe_offset */
+		__u64		probe_addr;	/* output: probe_addr */
+	} task_fd_query;
+
+	struct { /* struct used by BPF_LINK_CREATE command */
+		__u32		prog_fd;	/* eBPF program to attach */
+		union {
+			__u32		target_fd;	/* object to attach to */
+			__u32		target_ifindex; /* target ifindex */
+		};
+		__u32		attach_type;	/* attach type */
+		__u32		flags;		/* extra flags */
+		union {
+			__u32		target_btf_id;	/* btf_id of target to attach to */
+			struct {
+				__aligned_u64	iter_info;	/* extra bpf_iter_link_info */
+				__u32		iter_info_len;	/* iter_info length */
+			};
+			struct {
+				/* black box user-provided value passed through
+				 * to BPF program at the execution time and
+				 * accessible through bpf_get_attach_cookie() BPF helper
+				 */
+				__u64		bpf_cookie;
+			} perf_event;
+			struct {
+				__u32		flags;
+				__u32		cnt;
+				__aligned_u64	syms;
+				__aligned_u64	addrs;
+				__aligned_u64	cookies;
+			} kprobe_multi;
+			struct {
+				/* this is overlaid with the target_btf_id above. */
+				__u32		target_btf_id;
+				/* black box user-provided value passed through
+				 * to BPF program at the execution time and
+				 * accessible through bpf_get_attach_cookie() BPF helper
+				 */
+				__u64		cookie;
+			} tracing;
+		};
+	} link_create;
+
+	struct { /* struct used by BPF_LINK_UPDATE command */
+		__u32		link_fd;	/* link fd */
+		/* new program fd to update link with */
+		__u32		new_prog_fd;
+		__u32		flags;		/* extra flags */
+		/* expected link's program fd; is specified only if
+		 * BPF_F_REPLACE flag is set in flags */
+		__u32		old_prog_fd;
+	} link_update;
+
+	struct {
+		__u32		link_fd;
+	} link_detach;
+
+	struct { /* struct used by BPF_ENABLE_STATS command */
+		__u32		type;
+	} enable_stats;
+
+	struct { /* struct used by BPF_ITER_CREATE command */
+		__u32		link_fd;
+		__u32		flags;
+	} iter_create;
+
+	struct { /* struct used by BPF_PROG_BIND_MAP command */
+		__u32		prog_fd;
+		__u32		map_fd;
+		__u32		flags;		/* extra flags */
+	} prog_bind_map;
+
+} __attribute__((aligned(8)));
+
+struct btf_type {
+	__u32 name_off;
+	/* "info" bits arrangement
+	 * bits  0-15: vlen (e.g. # of struct's members)
+	 * bits 16-23: unused
+	 * bits 24-28: kind (e.g. int, ptr, array...etc)
+	 * bits 29-30: unused
+	 * bit     31: kind_flag, currently used by
+	 *             struct, union, enum, fwd and enum64
+	 */
+	__u32 info;
+	/* "size" is used by INT, ENUM, STRUCT, UNION, DATASEC and ENUM64.
+	 * "size" tells the size of the type it is describing.
+	 *
+	 * "type" is used by PTR, TYPEDEF, VOLATILE, CONST, RESTRICT,
+	 * FUNC, FUNC_PROTO, VAR, DECL_TAG and TYPE_TAG.
+	 * "type" is a type_id referring to another type.
+	 */
+	union {
+		__u32 size;
+		__u32 type;
+	};
+};
+
+enum {
+	BTF_KIND_UNKN = 0,	/* Unknown	*/
+	BTF_KIND_INT = 1,	/* Integer	*/
+	BTF_KIND_PTR = 2,	/* Pointer	*/
+	BTF_KIND_ARRAY = 3,	/* Array	*/
+	BTF_KIND_STRUCT = 4,	/* Struct	*/
+	BTF_KIND_UNION = 5,	/* Union	*/
+	BTF_KIND_ENUM = 6,	/* Enumeration up to 32-bit values */
+	BTF_KIND_FWD = 7,	/* Forward	*/
+	BTF_KIND_TYPEDEF = 8,	/* Typedef	*/
+	BTF_KIND_VOLATILE = 9,	/* Volatile	*/
+	BTF_KIND_CONST = 10,	/* Const	*/
+	BTF_KIND_RESTRICT = 11,	/* Restrict	*/
+	BTF_KIND_FUNC = 12,	/* Function	*/
+	BTF_KIND_FUNC_PROTO = 13,	/* Function Proto	*/
+	BTF_KIND_VAR = 14,	/* Variable	*/
+	BTF_KIND_DATASEC = 15,	/* Section	*/
+	BTF_KIND_FLOAT = 16,	/* Floating point	*/
+	BTF_KIND_DECL_TAG = 17,	/* Decl Tag */
+	BTF_KIND_TYPE_TAG = 18,	/* Type Tag */
+	BTF_KIND_ENUM64 = 19,	/* Enumeration up to 64-bit values */
+
+	NR_BTF_KINDS,
+	BTF_KIND_MAX = NR_BTF_KINDS - 1,
+};
+
+struct strset {
+	void *strs_data;
+	size_t strs_data_len;
+	size_t strs_data_cap;
+	size_t strs_data_max_len;
+
+	/* lookup index for each unique string in strings set */
+	struct hashmap *strs_hash;
+};
+
+#define BTF_INFO_KIND(info)	(((info) >> 24) & 0x1f)
+
+static const char *
+__btf_kind_str(__u16 kind)
+{
+	switch (kind) {
+		case BTF_KIND_UNKN: return "void";
+		case BTF_KIND_INT: return "int";
+		case BTF_KIND_PTR: return "ptr";
+		case BTF_KIND_ARRAY: return "array";
+		case BTF_KIND_STRUCT: return "struct";
+		case BTF_KIND_UNION: return "union";
+		case BTF_KIND_ENUM: return "enum";
+		case BTF_KIND_FWD: return "fwd";
+		case BTF_KIND_TYPEDEF: return "typedef";
+		case BTF_KIND_VOLATILE: return "volatile";
+		case BTF_KIND_CONST: return "const";
+		case BTF_KIND_RESTRICT: return "restrict";
+		case BTF_KIND_FUNC: return "func";
+		case BTF_KIND_FUNC_PROTO: return "func_proto";
+		case BTF_KIND_VAR: return "var";
+		case BTF_KIND_DATASEC: return "datasec";
+		case BTF_KIND_FLOAT: return "float";
+		case BTF_KIND_DECL_TAG: return "decl_tag";
+		case BTF_KIND_TYPE_TAG: return "type_tag";
+		case BTF_KIND_ENUM64: return "enum64";
+		default: return "unknown";
+	}
+}
+
+static inline __u16 
+btf_kind(const struct btf_type* t)
+{
+	return BTF_INFO_KIND(t->info);
+}
+
+const char *
+btf_kind_str(const struct btf_type *t)
+{
+	return __btf_kind_str(btf_kind(t));
+}
+
+static const void *btf_strs_data(const struct btf *btf)
+{
+	return btf->strs_data ? btf->strs_data : strset__data(btf->strs_set);
+}
+
+
+
+const char *strset__data(const struct strset *set)
+{
+	return set->strs_data;
+}
+
+const char *btf__str_by_offset(const struct btf *btf, __u32 offset)
+{
+	if (offset < btf->start_str_off)
+		return btf__str_by_offset(btf->base_btf, offset);
+	else if (offset - btf->start_str_off < btf->hdr->str_len)
+		return btf_strs_data(btf) + (offset - btf->start_str_off);
+	else
+		return errno = EINVAL, NULL;
+}
+
+const char *btf__name_by_offset(const struct btf *btf, __u32 offset)
+{
+	return btf__str_by_offset(btf, offset);
+}
+
+static const char *
+btf_str(const struct btf *btf, __u32 off)
+{
+	if (!off)
+		return "(anon)";
+	return btf__name_by_offset(btf, off) ? : "(invalid)";
+}
+
+static struct btf_type*
+// to-do implement btf struct
+get_btf_type_by_id(const struct btf *btf, __u32 type_id)
+{
+	if (type_id >= btf->start_id + btf_nr_types)
+		return NULL;
+	if (type_id == 0)
+		// to-do return static empty btf
+		return struct btf_type {};
+	if (type_id < btf->start_id)
+		return get_btf_type_by_id(btf->base_btf, type_id);
+	return btf->types_data + btf->type_offs[type_id - btf->start_id];
+}
+
+int 
+bpf_obj_get_info_by_fd(int bpf_fd, void *info, __u32 *info_len)
+{
+	union bpf_attr attr;
+	int err;
+
+	memset(&attr, 0, sizeof(attr));
+	attr.info.bpf_fd = bpf_fd;
+	attr.info.info_len = *info_len;
+	attr.info.info = ptr_to_u64(info);
+
+	err = sys_bpf(BPF_OBJ_GET_INFO_BY_FD, &attr, sizeof(attr));
+
+	if (!err)
+		*info_len = attr.info.info_len;
+
+	return libbpf_err_errno(err);
+}
+
+static void
+print_btf_map(struct tcb *const tcp, const uint64_t addr, const uint32_t len) 
+{
+	// to-do refine
+	int fd;
+	struct bpf_map_info map_info = {};
+	__u32 len = sizeof(map_info);
+	int err = bpf_obj_get_info_by_fd(fd, &map_info, &len);
+
+	// error handling
+
+	int btf_id = map_info.btf_id;
+	int btf_fd = bpf_btf_get_fd_by_id(btf_id);
+	struct btf* btf = btf__load_from_kernel_by_id_split(btf_id, NULL);
+	const struct btf_type* type;
+
+	// to-do get all id (no matter key or value)
+	type = btf__type_by_id(btf, map_info.btf_key_type_id);
+
+	// to-do print the type
+
+	int kind = btf_kind(type);
+	const char* kind_str = btf_kind_str(type);
+	const char* str = btf_str(btf, type->name_off);
+}
+
 BEGIN_BPF_CMD_DECODER(BPF_MAP_CREATE)
 {
 	tprint_struct_begin();
