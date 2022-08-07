@@ -15,6 +15,7 @@
 #include <linux/filter.h>
 
 #include "bpf_attr.h"
+#include "btf_attr.h"
 
 #include "xlat/bpf_commands.h"
 #include "xlat/bpf_file_mode_flags.h"
@@ -167,24 +168,23 @@ print_ebpf_prog(struct tcb *const tcp, const uint64_t addr, const uint32_t len)
 	}
 }
 
-struct bpf_map_info {
-	__u32 type;
-	__u32 id;
-	__u32 key_size;
-	__u32 value_size;
-	__u32 max_entries;
-	__u32 map_flags;
-	char  name[BPF_OBJ_NAME_LEN];
-	__u32 ifindex;
-	__u32 btf_vmlinux_value_type_id;
-	__u64 netns_dev;
-	__u64 netns_ino;
-	__u32 btf_id;
-	__u32 btf_key_type_id;
-	__u32 btf_value_type_id;
-	__u32 :32;	/* alignment pad */
-	__u64 map_extra;
-} __attribute__((aligned(8)));
+static void
+print_btf_map_info(struct tcb* const tcp, bool is_type_id, const uint32_t btf_id)
+{
+	print_big_u64_addr(addr);
+	if (abbrev(tcp)) {
+		printaddr(addr);
+	}
+	else {
+		if (is_type_id == true) {
+			uint32_t kind = btf_kind(btf_id);
+			print_btf_kind_str(kind);
+		}
+		else {
+			
+		}
+	}
+}
 
 union bpf_attr {
 	struct { /* anonymous struct used by BPF_MAP_CREATE command */
@@ -452,52 +452,11 @@ union bpf_attr {
 
 struct btf_type {
 	__u32 name_off;
-	/* "info" bits arrangement
-	 * bits  0-15: vlen (e.g. # of struct's members)
-	 * bits 16-23: unused
-	 * bits 24-28: kind (e.g. int, ptr, array...etc)
-	 * bits 29-30: unused
-	 * bit     31: kind_flag, currently used by
-	 *             struct, union, enum, fwd and enum64
-	 */
 	__u32 info;
-	/* "size" is used by INT, ENUM, STRUCT, UNION, DATASEC and ENUM64.
-	 * "size" tells the size of the type it is describing.
-	 *
-	 * "type" is used by PTR, TYPEDEF, VOLATILE, CONST, RESTRICT,
-	 * FUNC, FUNC_PROTO, VAR, DECL_TAG and TYPE_TAG.
-	 * "type" is a type_id referring to another type.
-	 */
 	union {
 		__u32 size;
 		__u32 type;
 	};
-};
-
-enum {
-	BTF_KIND_UNKN = 0,	/* Unknown	*/
-	BTF_KIND_INT = 1,	/* Integer	*/
-	BTF_KIND_PTR = 2,	/* Pointer	*/
-	BTF_KIND_ARRAY = 3,	/* Array	*/
-	BTF_KIND_STRUCT = 4,	/* Struct	*/
-	BTF_KIND_UNION = 5,	/* Union	*/
-	BTF_KIND_ENUM = 6,	/* Enumeration up to 32-bit values */
-	BTF_KIND_FWD = 7,	/* Forward	*/
-	BTF_KIND_TYPEDEF = 8,	/* Typedef	*/
-	BTF_KIND_VOLATILE = 9,	/* Volatile	*/
-	BTF_KIND_CONST = 10,	/* Const	*/
-	BTF_KIND_RESTRICT = 11,	/* Restrict	*/
-	BTF_KIND_FUNC = 12,	/* Function	*/
-	BTF_KIND_FUNC_PROTO = 13,	/* Function Proto	*/
-	BTF_KIND_VAR = 14,	/* Variable	*/
-	BTF_KIND_DATASEC = 15,	/* Section	*/
-	BTF_KIND_FLOAT = 16,	/* Floating point	*/
-	BTF_KIND_DECL_TAG = 17,	/* Decl Tag */
-	BTF_KIND_TYPE_TAG = 18,	/* Type Tag */
-	BTF_KIND_ENUM64 = 19,	/* Enumeration up to 64-bit values */
-
-	NR_BTF_KINDS,
-	BTF_KIND_MAX = NR_BTF_KINDS - 1,
 };
 
 struct strset {
@@ -510,54 +469,10 @@ struct strset {
 	struct hashmap *strs_hash;
 };
 
-#define BTF_INFO_KIND(info)	(((info) >> 24) & 0x1f)
-
-static const char *
-__btf_kind_str(__u16 kind)
-{
-	switch (kind) {
-		case BTF_KIND_UNKN: return "void";
-		case BTF_KIND_INT: return "int";
-		case BTF_KIND_PTR: return "ptr";
-		case BTF_KIND_ARRAY: return "array";
-		case BTF_KIND_STRUCT: return "struct";
-		case BTF_KIND_UNION: return "union";
-		case BTF_KIND_ENUM: return "enum";
-		case BTF_KIND_FWD: return "fwd";
-		case BTF_KIND_TYPEDEF: return "typedef";
-		case BTF_KIND_VOLATILE: return "volatile";
-		case BTF_KIND_CONST: return "const";
-		case BTF_KIND_RESTRICT: return "restrict";
-		case BTF_KIND_FUNC: return "func";
-		case BTF_KIND_FUNC_PROTO: return "func_proto";
-		case BTF_KIND_VAR: return "var";
-		case BTF_KIND_DATASEC: return "datasec";
-		case BTF_KIND_FLOAT: return "float";
-		case BTF_KIND_DECL_TAG: return "decl_tag";
-		case BTF_KIND_TYPE_TAG: return "type_tag";
-		case BTF_KIND_ENUM64: return "enum64";
-		default: return "unknown";
-	}
-}
-
-static inline __u16 
-btf_kind(const struct btf_type* t)
-{
-	return BTF_INFO_KIND(t->info);
-}
-
-const char *
-btf_kind_str(const struct btf_type *t)
-{
-	return __btf_kind_str(btf_kind(t));
-}
-
 static const void *btf_strs_data(const struct btf *btf)
 {
 	return btf->strs_data ? btf->strs_data : strset__data(btf->strs_set);
 }
-
-
 
 const char *strset__data(const struct strset *set)
 {
@@ -587,20 +502,6 @@ btf_str(const struct btf *btf, __u32 off)
 	return btf__name_by_offset(btf, off) ? : "(invalid)";
 }
 
-static struct btf_type*
-// to-do implement btf struct
-get_btf_type_by_id(const struct btf *btf, __u32 type_id)
-{
-	if (type_id >= btf->start_id + btf_nr_types)
-		return NULL;
-	if (type_id == 0)
-		// to-do return static empty btf
-		return struct btf_type {};
-	if (type_id < btf->start_id)
-		return get_btf_type_by_id(btf->base_btf, type_id);
-	return btf->types_data + btf->type_offs[type_id - btf->start_id];
-}
-
 int 
 bpf_obj_get_info_by_fd(int bpf_fd, void *info, __u32 *info_len)
 {
@@ -620,31 +521,7 @@ bpf_obj_get_info_by_fd(int bpf_fd, void *info, __u32 *info_len)
 	return libbpf_err_errno(err);
 }
 
-static void
-print_btf_map(struct tcb *const tcp, const uint64_t addr, const uint32_t len) 
-{
-	// to-do refine
-	int fd;
-	struct bpf_map_info map_info = {};
-	__u32 len = sizeof(map_info);
-	int err = bpf_obj_get_info_by_fd(fd, &map_info, &len);
-
-	// error handling
-
-	int btf_id = map_info.btf_id;
-	int btf_fd = bpf_btf_get_fd_by_id(btf_id);
-	struct btf* btf = btf__load_from_kernel_by_id_split(btf_id, NULL);
-	const struct btf_type* type;
-
-	// to-do get all id (no matter key or value)
-	type = btf__type_by_id(btf, map_info.btf_key_type_id);
-
-	// to-do print the type
-
-	int kind = btf_kind(type);
-	const char* kind_str = btf_kind_str(type);
-	const char* str = btf_str(btf, type->name_off);
-}
+PRINT_FIELD_U
 
 BEGIN_BPF_CMD_DECODER(BPF_MAP_CREATE)
 {
@@ -1167,13 +1044,26 @@ print_bpf_map_info(struct tcb * const tcp, uint32_t bpf_fd,
 	 */
 	if (len <= offsetof(struct bpf_map_info_struct, btf_id))
 		goto print_bpf_map_info_end;
+	
 	tprint_struct_next();
 	PRINT_FIELD_U(info, btf_id);
+	
+	tprint_struct_next();
+	print_btf_map_info(tcp, true, btf_key_type_id);
+	
 	tprint_struct_next();
 	PRINT_FIELD_U(info, btf_key_type_id);
+	
+	tprint_struct_next();
+	print_btf_map_info(tcp, true, btf_key_type_id);
+	
 	tprint_struct_next();
 	PRINT_FIELD_U(info, btf_value_type_id);
+	
+	tprint_struct_next();
+	print_btf_map_info(tcp, true, btf_value_type_id);
 
+	tprint_struct_next();
 	decode_attr_extra_data(tcp, info_buf, size, bpf_map_info_struct_size);
 
 print_bpf_map_info_end:
