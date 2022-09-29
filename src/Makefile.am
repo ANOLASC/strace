@@ -65,6 +65,8 @@ libstrace_a_SOURCES =	\
 	block.c		\
 	bpf.c		\
 	bpf_attr.h	\
+	bpf_btf.h	\
+	bpf_btf.c	\
 	bpf_filter.c	\
 	bpf_filter.h	\
 	bpf_fprog.h	\
