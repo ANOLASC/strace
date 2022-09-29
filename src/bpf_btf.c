@@ -267,7 +267,7 @@ static void btf_bswap_type_base(struct btf_type *t)
 	t->type = bswap_32(t->type);
 }
 
-static inline __u16 btf_vlen(const struct btf_type *t)
+static inline uint16_t btf_vlen(const struct btf_type *t)
 {
 	return BTF_INFO_VLEN(t->info);
 }
@@ -289,7 +289,7 @@ static inline __u16 btf_vlen(const struct btf_type *t)
 #define BTF_KIND_ENUM64		19	/* Enum for up-to 64bit values */
 
 struct btf_decl_tag {
-       __s32   component_idx;
+    int32_t   component_idx;
 };
 
 /* BTF_KIND_ENUM64 is followed by multiple "struct btf_enum64".
@@ -297,9 +297,9 @@ struct btf_decl_tag {
  * info in "struct btf_type").
  */
 struct btf_enum64 {
-	__u32	name_off;
-	__u32	val_lo32;
-	__u32	val_hi32;
+	uint32_t	name_off;
+	uint32_t	val_lo32;
+	uint32_t	val_hi32;
 };
 static inline struct btf_decl_tag *btf_decl_tag(const struct btf_type *t)
 {
@@ -309,7 +309,7 @@ static inline struct btf_decl_tag *btf_decl_tag(const struct btf_type *t)
 static int btf_type_size(const struct btf_type *t)
 {
 	const int base_size = sizeof(struct btf_type);
-	__u16 vlen = btf_vlen(t);
+	uint16_t vlen = btf_vlen(t);
 
 	switch (btf_kind(t)) {
 	case BTF_KIND_FWD:
@@ -323,7 +323,7 @@ static int btf_type_size(const struct btf_type *t)
 	case BTF_KIND_TYPE_TAG:
 		return base_size;
 	case BTF_KIND_INT:
-		return base_size + sizeof(__u32);
+		return base_size + sizeof(uint32_t);
 	case BTF_KIND_ENUM:
 		return base_size + vlen * sizeof(struct btf_enum);
 	case BTF_KIND_ENUM64:
@@ -419,13 +419,13 @@ static void *bpf_add_mem(void **data, size_t *cap_cnt, size_t elem_sz,
 
 static void *btf_add_type_offs_mem(struct btf *btf, size_t add_cnt)
 {
-	return bpf_add_mem((void **)&btf->type_offs, &btf->type_offs_cap, sizeof(__u32),
+	return bpf_add_mem((void **)&btf->type_offs, &btf->type_offs_cap, sizeof(uint32_t),
 			      btf->nr_types, BTF_MAX_NR_TYPES, add_cnt);
 }
 
-static int btf_add_type_idx_entry(struct btf *btf, __u32 type_off)
+static int btf_add_type_idx_entry(struct btf *btf, uint32_t type_off)
 {
-	__u32 *p;
+	uint32_t *p;
 
 	p = btf_add_type_offs_mem(btf, 1);
 	if (!p)
@@ -453,7 +453,7 @@ static int btf_bswap_type_rest(struct btf_type *t)
 	struct btf_array *a;
 	struct btf_param *p;
 	struct btf_enum *e;
-	__u16 vlen = btf_vlen(t);
+	uint16_t vlen = btf_vlen(t);
 	int i;
 
 	switch (btf_kind(t)) {
@@ -468,7 +468,7 @@ static int btf_bswap_type_rest(struct btf_type *t)
 	case BTF_KIND_TYPE_TAG:
 		return 0;
 	case BTF_KIND_INT:
-		*(__u32 *)(t + 1) = bswap_32(*(__u32 *)(t + 1));
+		*(uint32_t *)(t + 1) = bswap_32(*(uint32_t *)(t + 1));
 		return 0;
 	case BTF_KIND_ENUM:
 		for (i = 0, e = btf_enum(t); i < vlen; i++, e++) {
