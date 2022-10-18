@@ -7,6 +7,10 @@
 #define BTF_MAX_NR_TYPES 0x7fffffffU
 #define BTF_MAX_STR_OFFSET 0x7fffffffU
 
+#ifndef __NR_pidfd_getfd
+#define __NR_pidfd_getfd 438
+#endif
+
 static inline uint64_t ptr_to_u64(const void *ptr)
 {
 	return (uint64_t) (unsigned long) ptr;
@@ -662,30 +666,31 @@ exit_free:
 
 int open_pidfd_and_get_fd(int pid, int fd)
 {
-	int ret = syscall(SYS_pidfd_open, pid, 0);
-	if (ret == -1) {
+	int pidfd = syscall(__NR_pidfd_open, pid, 0);
+	if (pidfd == -1) {
 		int err = -errno;
-		error_msg("%s\n", strerror(ret));
+		error_msg("%s\n", strerror(pidfd));
 		return err;
 	}
 
-	int pidfd = ret;
-
-	int ret1 = syscall(438, pidfd, fd, 0);
-	if (ret1 == -1) {
+	int tracee_fd = syscall(__NR_pidfd_getfd, pidfd, fd, 0);
+	if (tracee_fd == -1) {
 		int err = -errno;
-		error_msg("%s\n", strerror(ret1));
+		error_msg("%s\n", strerror(tracee_fd));
 		return err;
 	}
 
 	close(pidfd);
 
-	return ret1;
+	return tracee_fd;
 }
 
 void print_map_btf(struct tcb * const tcp, int map_fd)
 {
 	int tracee_map_fds = open_pidfd_and_get_fd(tcp->pid, map_fd);
+	if (tracee_map_fds < 0)
+		return ;
+
 	struct bpf_map_info info = {};
 	uint32_t len = sizeof(info);
 	bpf_obj_get_info_by_fd(tracee_map_fds, &info, &len);

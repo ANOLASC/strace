@@ -1884,6 +1884,34 @@ main(void)
 	printf("bpf(0xfacefeed /* BPF_??? */, %#lx, 40) = %s\n",
 	       end_of_page, errstr);
 
+	#ifdef CHECK_MAP_BTF
+
+	BPF_MAP_CREATE_struct map_create_attr = {
+		.map_type = BPF_MAP_TYPE_ARRAY,
+		.key_size = sizeof(int),
+		.value_size = sizeof(long),
+		.max_entries = 256
+		.map_name = "map_name"
+	};
+	uint32_t sz = sizeof(map_create_attr);
+	int fd = sys_bpf(BPF_MAP_CREATE, &map_create_attr, &sz);
+	// TODO
+	printf("");
+
+	int key = 1;
+	long value;
+	BPF_MAP_LOOKUP_ELEM_struct map_lookup_attr = {
+		.map_fd = fd,
+		.key = (uint64_t)&key,
+		.value = (uint64_t)&value
+	};
+	uint32_t map_lookup_sz = sizeof(map_lookup_attr);
+
+	sys_bpf(BPF_MAP_LOOKUP_ELEM, &map_lookup_attr, &map_lookup_sz);
+	printf("");
+
+	#endif
+
 	puts("+++ exited with 0 +++");
 	return 0;
 }
